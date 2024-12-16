@@ -1,13 +1,15 @@
 from flask import Flask, request, jsonify
 import re
 from sympy import symbols, sympify, Eq, solve, factor
+import requests  # Pour les requêtes HTTP
 
 app = Flask(__name__)
 
-# Variable symbolique pour le polynôme
+SPRING_BOOT_API_URL = "http://localhost:8082/api/store-polynomial"
+
 x = symbols('x')
+
 def normalize_expression(expr):
-    # Remplacer les notations incorrectes
     expr = re.sub(r'x(\d+)', r'x^\1', expr)
     expr = expr.replace('x^', 'x**')
     expr = re.sub(r'(?<=\d)(x)', r'*x', expr)
@@ -26,58 +28,44 @@ def format_simplified_expression(expr):
     expr_str = re.sub(r'(\+|\-)1x', r'\1x', expr_str)
     return expr_str
 
-
-@app.route('/process_polynomial', methods=['POST'])
+@app.route('/process_polynomiall', methods=['POST'])
 def process_polynomial():
-    data = request.get_json()  # Récupère les données JSON de la requête
-    
-    # Obtenir l'expression du polynôme
+    data = request.get_json()
     expression = data.get("expression", "")
-    
-    if expression:
-        # Normaliser l'expression avant de la passer à sympy
-        normalized_expr = normalize_expression(expression)
-        
-        try:
-            # Simplification du polynôme
-            simplified_expr = sympify(normalized_expr)
-            simplified_expr = simplified_expr.simplify()  # Appliquer la simplification
-            simplified_str = format_simplified_expression(simplified_expr)
-            
-            # Factorisation symbolique
-            factored_expr = factor(simplified_expr)
-            factored_str = format_simplified_expression(factored_expr)
-            
-            # Calculer les racines du polynôme simplifié avec sympy
-            roots = solve(Eq(simplified_expr, 0), x)
-            
-            # Formatage des racines en "a + bi" ou "a - bi"
-            formatted_roots = []
-            for root in roots:
-                if root.is_complex:  # Si la racine est complexe
-                    real_part = f"{root.as_real_imag()[0]:.4f}"
-                    imaginary_part = f"{abs(root.as_real_imag()[1]):.4f}"
-                    if root.as_real_imag()[1] >= 0:
-                        formatted_root = f"{real_part} + {imaginary_part}i"
-                    else:
-                        formatted_root = f"{real_part} - {imaginary_part}i"
-                else:  # Si la racine est réelle
-                    formatted_root = f"{root.evalf():.4f}"
-                
-                formatted_roots.append(formatted_root)
-            
-            result = {
-                "simplified_expression": simplified_str,
-                "factored_expression": factored_str,
-                "roots": formatted_roots
-            }
-        except Exception as e:
-            return jsonify({"error": f"Erreur lors du calcul des racines : {str(e)}"}), 400
-        
-    else:
-        return jsonify({"error": "Veuillez fournir une expression de polynôme."}), 400
-    
-    return jsonify(result), 200
+    user_id = data.get("userId", None)
+
+    if not user_id:
+        return jsonify({"error": "userId is required."}), 400
+    if not expression:
+        return jsonify({"error": "Please provide a polynomial expression."}), 400
+
+    normalized_expr = normalize_expression(expression)
+
+    try:
+        simplified_expr = sympify(normalized_expr).simplify()
+        simplified_str = format_simplified_expression(simplified_expr)
+
+        factored_expr = factor(simplified_expr)
+        factored_str = format_simplified_expression(factored_expr)
+
+        roots = solve(Eq(simplified_expr, 0), x)
+        formatted_roots = [str(root.evalf()) for root in roots]
+
+        result = {
+            "simplifiedExpression": simplified_str,
+            "factoredExpression": factored_str,
+            "roots": formatted_roots,
+            "userId": user_id
+        }
+
+        # Envoi des résultats à l'API Spring Boot
+        spring_response = requests.post(SPRING_BOOT_API_URL, json=result)
+        if spring_response.status_code == 200:
+            return jsonify({"message": "Polynomial processed and stored successfully.", "result": result}), 200
+        else:
+            return jsonify({"error": "Failed to store polynomial in Spring Boot."}), spring_response.status_code
+    except Exception as e:
+        return jsonify({"error": f"Error processing polynomial: {str(e)}"}), 400
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5010)
