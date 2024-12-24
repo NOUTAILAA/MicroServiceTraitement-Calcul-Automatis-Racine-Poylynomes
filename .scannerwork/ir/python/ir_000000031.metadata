@@ -1,0 +1,7 @@
+app.format_simplified_expression
+false
+e360c9f334cdf44206cf539eb38c8ee8
+re.sub
+str.__init__
+==
+replace

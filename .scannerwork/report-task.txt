@@ -1,0 +1,7 @@
+organization=noutailaa
+projectKey=MicroservSympy
+serverUrl=https://sonarcloud.io
+serverVersion=8.0.0.58741
+dashboardUrl=https://sonarcloud.io/dashboard?id=MicroservSympy
+ceTaskId=AZP0vL1cVfn3Ih7kRccj
+ceTaskUrl=https://sonarcloud.io/api/ce/task?id=AZP0vL1cVfn3Ih7kRccj
