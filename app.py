@@ -1,13 +1,20 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # Importer CORS
 import re
 from sympy import symbols, sympify, Eq, solve, factor
+import requests
 
 app = Flask(__name__)
+CORS(app)  # Permettre CORS sur toutes les routes de l'application
 
 # Variable symbolique pour le polynôme
 x = symbols('x')
+
+# URL de l'API Spring Boot
+SPRING_BOOT_API_URL = "http://spring-app:8082/api/store-polynomial"
+
 def normalize_expression(expr):
-    # Remplacer les notations incorrectes
+    # Normalisation de l'expression polynomiale
     expr = re.sub(r'x(\d+)', r'x^\1', expr)
     expr = expr.replace('x^', 'x**')
     expr = re.sub(r'(?<=\d)(x)', r'*x', expr)
@@ -26,58 +33,40 @@ def format_simplified_expression(expr):
     expr_str = re.sub(r'(\+|\-)1x', r'\1x', expr_str)
     return expr_str
 
-
 @app.route('/process_polynomial', methods=['POST'])
 def process_polynomial():
-    data = request.get_json()  # Récupère les données JSON de la requête
-    
-    # Obtenir l'expression du polynôme
+    data = request.get_json()
     expression = data.get("expression", "")
-    
-    if expression:
-        # Normaliser l'expression avant de la passer à sympy
-        normalized_expr = normalize_expression(expression)
-        
-        try:
-            # Simplification du polynôme
-            simplified_expr = sympify(normalized_expr)
-            simplified_expr = simplified_expr.simplify()  # Appliquer la simplification
-            simplified_str = format_simplified_expression(simplified_expr)
-            
-            # Factorisation symbolique
-            factored_expr = factor(simplified_expr)
-            factored_str = format_simplified_expression(factored_expr)
-            
-            # Calculer les racines du polynôme simplifié avec sympy
-            roots = solve(Eq(simplified_expr, 0), x)
-            
-            # Formatage des racines en "a + bi" ou "a - bi"
-            formatted_roots = []
-            for root in roots:
-                if root.is_complex:  # Si la racine est complexe
-                    real_part = f"{root.as_real_imag()[0]:.4f}"
-                    imaginary_part = f"{abs(root.as_real_imag()[1]):.4f}"
-                    if root.as_real_imag()[1] >= 0:
-                        formatted_root = f"{real_part} + {imaginary_part}i"
-                    else:
-                        formatted_root = f"{real_part} - {imaginary_part}i"
-                else:  # Si la racine est réelle
-                    formatted_root = f"{root.evalf():.4f}"
-                
-                formatted_roots.append(formatted_root)
-            
-            result = {
-                "simplified_expression": simplified_str,
-                "factored_expression": factored_str,
-                "roots": formatted_roots
-            }
-        except Exception as e:
-            return jsonify({"error": f"Erreur lors du calcul des racines : {str(e)}"}), 400
-        
-    else:
+    user_id = data.get("userId", "")  # Get userId from the request
+
+    if not expression:
         return jsonify({"error": "Veuillez fournir une expression de polynôme."}), 400
-    
-    return jsonify(result), 200
+
+    normalized_expr = normalize_expression(expression)
+
+    try:
+        # Simplification du polynôme
+        simplified_expr = sympify(normalized_expr).simplify()
+        simplified_str = format_simplified_expression(simplified_expr)
+
+        # Factorisation
+        factored_expr = factor(simplified_expr)
+        factored_str = format_simplified_expression(factored_expr)
+
+        # Résolution des racines
+        roots = solve(Eq(simplified_expr, 0), x)
+        formatted_roots = [str(root.evalf()) for root in roots]
+
+        # Directly return the response with userId and roots
+        return jsonify({
+            "userId": user_id,
+            "roots": formatted_roots, 
+             "simplifiedExpression": simplified_str,
+            "factoredExpression": factored_str
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Erreur lors du traitement : {str(e)}"}), 400
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", port=5110, debug=True)
