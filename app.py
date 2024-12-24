@@ -1,72 +1,79 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # Importer CORS
+from sympy import symbols, Eq, solve, simplify, factor, I
 import re
-from sympy import symbols, sympify, Eq, solve, factor
 import requests
+from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # Permettre CORS sur toutes les routes de l'application
+CORS(app)
 
-# Variable symbolique pour le polynôme
-x = symbols('x')
+# Fonction pour convertir l'expression du format textuel en sympy
 
-# URL de l'API Spring Boot
-SPRING_BOOT_API_URL = "http://localhost:8082/api/store-polynomial"
+def parse_polynomial(poly_str):
+    poly_str = re.sub(r'(\d+)x(\d+)', r'\1*x**\2', poly_str)
 
-def normalize_expression(expr):
-    # Normalisation de l'expression polynomiale
-    expr = re.sub(r'x(\d+)', r'x^\1', expr)
-    expr = expr.replace('x^', 'x**')
-    expr = re.sub(r'(?<=\d)(x)', r'*x', expr)
-    expr = re.sub(r'(?<=\d)(\()', r'*(', expr)
-    expr = re.sub(r'([a-zA-Z0-9])\+', r'\1 +', expr)
-    expr = re.sub(r'(\+|\-)\s*', r' \1 ', expr)
-    expr = expr.replace('**1', '')
-    return expr
+    poly_str = re.sub(r'(?<!\*)\b(\d)(x)', r'\1*\2', poly_str)  # Convertit 2x -> 2*x
+    poly_str = re.sub(r'(?<!\*)\b(x)(\d)', r'\1**\2', poly_str)  # Convertit x2 -> x**2
+    return poly_str
 
-def format_simplified_expression(expr):
-    expr_str = str(expr)
-    expr_str = expr_str.replace('**', '')
-    expr_str = re.sub(r'(\d)(x\*)', r'\1x', expr_str)
-    expr_str = re.sub(r'\*', '', expr_str)
-    expr_str = expr_str.replace('x^1', 'x')
-    expr_str = re.sub(r'(\+|\-)1x', r'\1x', expr_str)
-    return expr_str
+# Fonction pour retirer les * et convertir I en i dans les expressions
+
+def format_expression(expr):
+    formatted = re.sub(r'\*', '', str(expr))
+    return formatted.replace('I', 'i')
 
 @app.route('/process_polynomial', methods=['POST'])
-def process_polynomial():
-    data = request.get_json()
-    expression = data.get("expression", "")
-    user_id = data.get("userId", "")  # Get userId from the request
+def solve_polynomial():
+    data = request.json
+    expression = data.get('expression')
+    user_id = data.get('userId')
 
     if not expression:
-        return jsonify({"error": "Veuillez fournir une expression de polynôme."}), 400
+        return jsonify({"error": "No polynomial provided"}), 400
 
-    normalized_expr = normalize_expression(expression)
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
 
+    x = symbols('x')
     try:
-        # Simplification du polynôme
-        simplified_expr = sympify(normalized_expr).simplify()
-        simplified_str = format_simplified_expression(simplified_expr)
-
-        # Factorisation
-        factored_expr = factor(simplified_expr)
-        factored_str = format_simplified_expression(factored_expr)
+        parsed_poly = parse_polynomial(expression)
+        parsed_expr = eval(parsed_poly)
 
         # Résolution des racines
-        roots = solve(Eq(simplified_expr, 0), x)
-        formatted_roots = [str(root.evalf()) for root in roots]
+        eq = Eq(parsed_expr, 0)
+        roots = solve(eq, x)
+        roots = [format_expression(root) for root in roots]
 
-        # Directly return the response with userId and roots
-        return jsonify({
-            "userId": user_id,
-            "roots": formatted_roots, 
-             "simplifiedExpression": simplified_str,
-            "factoredExpression": factored_str
-        }), 200
+        # Simplification
+        simplified_expr = simplify(parsed_expr)
+
+        # Factorisation
+        factored_expr = factor(parsed_expr)
+
+        # Préparer les données pour l'API externe
+        payload = {
+            "simplifiedExpression": format_expression(simplified_expr),
+            "factoredExpression": format_expression(factored_expr),
+            "roots": roots,
+            "userId": user_id
+        }
+
+        # Envoyer les résultats à l'API externe pour stockage
+        response = requests.post("http://spring-app:8082/api/store-polynomial", json=payload)
+
+        if response.status_code == 200:
+            return jsonify({
+                "userId": user_id,
+                "roots": roots,
+                "simplifiedExpression": format_expression(simplified_expr),
+                "factoredExpression": format_expression(factored_expr)
+            })
+        else:
+            return jsonify({"error": "Failed to store polynomial", "details": response.text}), 500
 
     except Exception as e:
-        return jsonify({"error": f"Erreur lors du traitement : {str(e)}"}), 400
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5110)
+    app.run(host="0.0.0.0", port=5110, debug=True)
