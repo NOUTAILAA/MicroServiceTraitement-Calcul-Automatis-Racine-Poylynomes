@@ -59,7 +59,7 @@ def solve_polynomial():
         }
 
         # Envoyer les résultats à l'API externe pour stockage
-        response = requests.post("http://localhost:8082/api/store-polynomial", json=payload)
+        response = requests.post("http://spring-app:8082/api/store-polynomial", json=payload)
 
         if response.status_code == 200:
             return jsonify({
@@ -76,4 +76,4 @@ def solve_polynomial():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5110)
+    app.run(host="0.0.0.0", port=5110, debug=True)
