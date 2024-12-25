@@ -10,7 +10,7 @@ CORS(app)
 # Fonction pour convertir l'expression du format textuel en sympy
 
 def parse_polynomial(poly_str):
-    poly_str = re.sub(r'(\d+)x(\d+)', r'\1*x**\2', poly_str)
+    poly_str = re.sub(r'\b(\d+)x(\d+)\b', r'\1*x**\2', poly_str)
 
     poly_str = re.sub(r'(?<!\*)\b(\d)(x)', r'\1*\2', poly_str)  # Convertit 2x -> 2*x
     poly_str = re.sub(r'(?<!\*)\b(x)(\d)', r'\1**\2', poly_str)  # Convertit x2 -> x**2
@@ -59,7 +59,7 @@ def solve_polynomial():
         }
 
         # Envoyer les résultats à l'API externe pour stockage
-        response = requests.post("http://spring-app:8082/api/store-polynomial", json=payload)
+        response = requests.post("http://localhost:8082/api/store-polynomial", json=payload)
 
         if response.status_code == 200:
             return jsonify({
@@ -76,4 +76,4 @@ def solve_polynomial():
 
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5110, debug=True)
+    app.run(debug=True, port=5110)
