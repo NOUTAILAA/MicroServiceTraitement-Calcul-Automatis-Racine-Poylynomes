@@ -1,9 +1,11 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from sympy import symbols, Eq, solve, simplify, factor, I
+import io
 import re
+import numpy as np
 import requests
 from flask_cors import CORS
-
+import matplotlib.pyplot as plt
 app = Flask(__name__)
 CORS(app)
 
@@ -73,7 +75,47 @@ def solve_polynomial():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route('/plot_polynomial', methods=['POST'])
+def plot_polynomial():
+    data = request.json
+    expression = data.get('expression')
 
+    if not expression:
+        return jsonify({"error": "No polynomial provided"}), 400
+
+    x = symbols('x')
+    try:
+        parsed_poly = parse_polynomial(expression)
+        parsed_expr = eval(parsed_poly)
+
+        # Convertir l'expression sympy en fonction Python
+        f = lambda t: eval(str(parsed_expr).replace('x', 't'))
+
+        # Générer les points pour le graphe
+        t = np.linspace(-10, 10, 500)  # Plage de valeurs pour x
+        y = [f(val) for val in t]
+
+        # Tracer le graphe
+        plt.figure(figsize=(10, 6))
+        plt.plot(t, y, label=f'Graph of {expression}')
+        plt.axhline(0, color='black', linewidth=0.8, linestyle='--')
+        plt.axvline(0, color='black', linewidth=0.8, linestyle='--')
+        plt.title("Polynomial Plot")
+        plt.xlabel("x")
+        plt.ylabel("f(x)")
+        plt.grid(True)
+        plt.legend()
+
+        # Sauvegarder l'image dans un buffer
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close()
+
+        return send_file(buf, mimetype='image/png')
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5110, debug=True)
