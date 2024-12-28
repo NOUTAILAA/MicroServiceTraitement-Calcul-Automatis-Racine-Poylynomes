@@ -4,5 +4,3 @@ sympy
 requests
 numpy 
 matplotlib
-re
-io
