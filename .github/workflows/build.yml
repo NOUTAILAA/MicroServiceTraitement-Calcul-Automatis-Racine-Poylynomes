@@ -8,77 +8,8 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  run-backend:
-    name: Run Backe nd Spring Boot
-    runs-on: ubuntu-latest
-    
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: polynome
-        ports:
-          - "3307:3306"
-
-    steps:
-      - name: Checkout Spring Boot Backend
-        uses: actions/checkout@v4
-        with:
-          repository: NOUTAILAA/MicroServiceStockage_CalculAutomatiseRacinePolynome
-          ref: main_test
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: 17
-
-      - name: Build and Start Spring Boot Backend
-        run: |
-          echo "MYSQL_HOST=127.0.0.1" >> $GITHUB_ENV
-          echo "MYSQL_PORT=3307" >> $GITHUB_ENV
-          echo "MYSQL_USER=root" >> $GITHUB_ENV
-          echo "MYSQL_PASSWORD=root" >> $GITHUB_ENV
-          
-          mvn clean install -DskipTests
-          
-          # Démarrer Spring Boot en arrière-plan et loguer les sorties
-          nohup java -jar target/*.jar > nohup.out 2>&1 &
-          
-          echo "Waiting 30 seconds for Spring Boot to fully initialize..."
-          sleep 30
-
-      - name: Wait for Backend to Start
-        run: |
-          echo "Waiting for Spring Boot to start..."
-          for i in {1..30}; do
-            if curl --silent --fail http://localhost:8082/api/store-polynomial; then
-              echo "API is ready!"
-              break
-            fi
-            echo "Waiting for API to be ready..."
-            sleep 5
-          done
-          curl http://localhost:8082/api/store-polynomial || true
-
-      - name: Show Spring Boot Logs (if failure)
-        if: always()
-        run: |
-          echo "Spring Boot Logs:"
-          cat nohup.out || true
-
-      - name: Upload Spring Boot Logs
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: spring-boot-logs
-          path: nohup.out
-
   sonarqube:
     name: SonarQube Scan (Python)
-    needs: run-backend
     runs-on: ubuntu-latest
 
     steps:
@@ -99,12 +30,25 @@ jobs:
           
       - name: Set Backend Host
         run: |
-          echo "SPRING_HOST=host.docker.internal" >> $GITHUB_ENV
+          echo "SPRING_HOST=spring-app" >> $GITHUB_ENV  # Nom du conteneur ou IP publique
           echo "SPRING_PORT=8082" >> $GITHUB_ENV
+
+      - name: Wait for Backend to Start
+        run: |
+          echo "Waiting for Spring Boot to start..."
+          for i in {1..30}; do
+            if curl --silent --fail http://$SPRING_HOST:$SPRING_PORT/api/store-polynomial; then
+              echo "API is ready!"
+              break
+            fi
+            echo "Waiting for Spring Boot API..."
+            sleep 5
+          done
+          curl http://$SPRING_HOST:$SPRING_PORT/api/store-polynomial || true
 
       - name: Run Tests and Generate Coverage
         run: |
-          pytest tests --cov=app --cov-report=xml || true  # Passe même si des tests échouent
+          pytest tests --cov=app --cov-report=xml || true  # Continuer même si des tests échouent
 
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v4
