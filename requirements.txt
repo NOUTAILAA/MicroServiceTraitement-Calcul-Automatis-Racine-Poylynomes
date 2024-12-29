@@ -1,6 +1,8 @@
 flask
-flask-cors
 sympy
+numpy
 requests
-numpy 
 matplotlib
+pytest
+pytest-cov
+flask-cors

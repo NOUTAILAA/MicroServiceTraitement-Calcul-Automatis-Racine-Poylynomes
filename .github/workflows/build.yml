@@ -1,0 +1,94 @@
+name: Build and Scan Python Service
+
+on:
+  push:
+    branches:
+      - main_test
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  run-backend:
+    name: Run Backend Spring Boot
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: polynome
+        ports:
+          - "3307:3306"
+
+    steps:
+      - name: Checkout Spring Boot Backend
+        uses: actions/checkout@v4
+        with:
+          repository: NOUTAILAA/MicroServiceStockage_CalculAutomatiseRacinePolynome
+          ref: main_test  # Branche du backend
+          token: ${{ secrets.GITHUB_TOKEN }}  # Nécessaire pour cloner le repo privé
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Build and Start Spring Boot Backend
+        run: |
+          echo "MYSQL_HOST=127.0.0.1" >> $GITHUB_ENV
+          echo "MYSQL_PORT=3307" >> $GITHUB_ENV
+          echo "MYSQL_USER=root" >> $GITHUB_ENV
+          echo "MYSQL_PASSWORD=root" >> $GITHUB_ENV
+          mvn clean install -DskipTests
+          nohup java -jar target/*.jar &  # Démarre le backend en arrière-plan
+
+      - name: Wait for Backend to Start
+        run: |
+          echo "Waiting for Spring Boot to start..."
+          for i in {1..30}; do
+            if curl --silent --fail http://localhost:8082/actuator/health; then
+              echo "Backend is ready!"
+              break
+            fi
+            echo "Waiting for backend..."
+            sleep 5
+          done
+          
+  sonarqube:
+    name: SonarQube Scan (Python)
+    needs: run-backend  # Attendre que le backend soit opérationnel
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Python Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Pour SonarQube, éviter les shallow clones
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Tests and Generate Coverage
+        run: |
+          pytest --cov=app --cov-report=xml
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: coverage.xml
