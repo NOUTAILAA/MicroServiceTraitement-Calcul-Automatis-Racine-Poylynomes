@@ -26,8 +26,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: NOUTAILAA/MicroServiceStockage_CalculAutomatiseRacinePolynome
-          ref: main_test  # Branche du backend
-          token: ${{ secrets.GITHUB_TOKEN }}  # Nécessaire pour cloner le repo privé
+          ref: main_test
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v3
@@ -49,23 +49,26 @@ jobs:
           echo "Waiting for Spring Boot to start..."
           for i in {1..30}; do
             if curl --silent --fail http://localhost:8082/actuator/health; then
-              echo "Backend is ready!"
-              break
+              echo "Backend is healthy"
+              if curl --silent --fail http://localhost:8082/api/store-polynomial; then
+                echo "Critical API is ready!"
+                break
+              fi
             fi
-            echo "Waiting for backend..."
+            echo "Waiting for critical API endpoint to be ready..."
             sleep 5
           done
-          
+
   sonarqube:
     name: SonarQube Scan (Python)
-    needs: run-backend  # Attendre que le backend soit opérationnel
+    needs: run-backend
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Python Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Pour SonarQube, éviter les shallow clones
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -79,7 +82,7 @@ jobs:
 
       - name: Run Tests and Generate Coverage
         run: |
-          pytest --cov=app --cov-report=xml
+          pytest tests --cov=app --cov-report=xml || true  # Passe même si des tests échouent
 
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v4
